@@ -98,6 +98,7 @@ struct communication_options
 	int f_iswep;
 
 	uint8_t deauth_rc;
+	uint8_t n_deauth_pkts;
 	int r_nbpps;
 	unsigned int r_fctrl;
 	uint8_t r_bssid[6];

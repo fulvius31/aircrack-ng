@@ -181,6 +181,8 @@ static const char usage[] =
 	"cfg80211\n"
 	"      --deauth-rc rc        : Deauthentication reason code [0-254] "
 	"(Default: 7)\n"
+	"      --n-pkts        : Number of deauthentication packets [0-254] "
+	"(Default: 64)\n"
 	"\n"
 	"  Attack modes (numbers can still be used):\n"
 	"\n"
@@ -434,6 +436,15 @@ static int do_attack_deauth(void)
 
 		if (memcmp(opt.r_dmac, NULL_MAC, 6) != 0)
 		{
+			struct timespec ts;                                                 
+                                                                                           
+                        if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {                     
+                        	printf("\nStart DeAuth attack with %d n-pkts at (uptime): %lld ns\n",     
+                           	opt.n_deauth_pkts,(long long int)ts.tv_sec * 1000000000LL + ts.tv_nsec);
+                        } else
+              		{                                                            
+                        	perror("clock_gettime");                                        
+                        }  
 			/* deauthenticate the target */
 
 			memcpy(h80211, DEAUTH_REQ, 26);
@@ -444,13 +455,14 @@ static int do_attack_deauth(void)
 
 			aacks = 0;
 			sacks = 0;
-			for (i = 0; i < 64; i++)
-			{
+			for (i = 0; i < opt.n_deauth_pkts; i++)
+			{                                                                 
 				if (i == 0)
 				{
 					PCT;
-					printf("Sending 64 directed DeAuth (code %i). STMAC:"
+					printf("Sending %d directed DeAuth (code %i). STMAC:"
 						   " [%02X:%02X:%02X:%02X:%02X:%02X] [%2d|%2d ACKs]\r",
+						   opt.n_deauth_pkts,
 						   opt.deauth_rc,
 						   opt.r_dmac[0],
 						   opt.r_dmac[1],
@@ -513,8 +525,9 @@ static int do_attack_deauth(void)
 						}
 						PCT;
 						printf(
-							"Sending 64 directed DeAuth (code %i). STMAC:"
+							"Sending %d directed DeAuth (code %i). STMAC:"
 							" [%02X:%02X:%02X:%02X:%02X:%02X] [%2d|%2d ACKs]\r",
+							opt.n_deauth_pkts,
 							opt.deauth_rc,
 							opt.r_dmac[0],
 							opt.r_dmac[1],
@@ -551,7 +564,7 @@ static int do_attack_deauth(void)
 			memcpy(h80211 + 10, opt.r_bssid, 6);
 			memcpy(h80211 + 16, opt.r_bssid, 6);
 
-			for (i = 0; i < 128; i++)
+			for (i = 0; i < opt.n_deauth_pkts; i++)
 			{
 				if (send_packet(_wi_out, h80211, 26, kRewriteSequenceNumber)
 					< 0)
@@ -5992,6 +6005,7 @@ int main(int argc, char * argv[])
 	opt.reassoc = 0;
 	opt.deauth_rc = 7; /* By default deauth reason code is Class 3 frame
 						  received from nonassociated STA */
+	opt.n_deauth_pkts = 64;
 
 /* XXX */
 #if 0
@@ -6029,6 +6043,7 @@ int main(int argc, char * argv[])
 			   {"migmode", 0, 0, '8'},
 			   {"ignore-negative-one", 0, &opt.ignore_negative_one, 1},
 			   {"deauth-rc", 1, 0, 'Z'},
+			   {"n-pkts", 1, 0, 'N'},
 			   {0, 0, 0, 0}};
 
 		int option = getopt_long(argc,
@@ -6504,6 +6519,16 @@ int main(int argc, char * argv[])
 			case 'R':
 
 				opt.rtc = 0;
+				break;
+			case 'N':
+
+				ret = sscanf(optarg, "%hhu", &opt.n_deauth_pkts);
+				if (ret != 1)
+				{
+					printf("Invalid number deauth packets. [0-256]\n");
+					printf("\"%s --help\" for help.\n", argv[0]);
+					return (1);
+				}
 				break;
 
 			default:
