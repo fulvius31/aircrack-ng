@@ -181,7 +181,7 @@ static const char usage[] =
 	"cfg80211\n"
 	"      --deauth-rc rc        : Deauthentication reason code [0-254] "
 	"(Default: 7)\n"
-	"      --n-pkts        : Number of deauthentication packets [0-254] "
+	"      --n-pkts        : Number of deauthentication packets [0-255] "
 	"(Default: 64)\n"
 	"\n"
 	"  Attack modes (numbers can still be used):\n"
@@ -456,7 +456,7 @@ static int do_attack_deauth(void)
 			aacks = 0;
 			sacks = 0;
 			for (i = 0; i < opt.n_deauth_pkts; i++)
-			{                                                                 
+			{
 				if (i == 0)
 				{
 					PCT;
@@ -564,7 +564,7 @@ static int do_attack_deauth(void)
 			memcpy(h80211 + 10, opt.r_bssid, 6);
 			memcpy(h80211 + 16, opt.r_bssid, 6);
 
-			for (i = 0; i < opt.n_deauth_pkts; i++)
+			for (i = 0; i < opt.n_deauth_pkts * 2; i++)
 			{
 				if (send_packet(_wi_out, h80211, 26, kRewriteSequenceNumber)
 					< 0)
@@ -6525,7 +6525,7 @@ int main(int argc, char * argv[])
 				ret = sscanf(optarg, "%hhu", &opt.n_deauth_pkts);
 				if (ret != 1)
 				{
-					printf("Invalid number deauth packets. [0-256]\n");
+					printf("Invalid number deauth packets. [0-255]\n");
 					printf("\"%s --help\" for help.\n", argv[0]);
 					return (1);
 				}
