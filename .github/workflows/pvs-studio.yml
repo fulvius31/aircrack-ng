@@ -34,6 +34,7 @@ on:
       - '.github/workflows/openbsd.yml'
       - '.github/workflows/windows.yml'
       - '.vscode/**'
+      - '.codespellrc'
       - '.gitignore'
       - '.pre-commit-config.yaml'
       - 'AC_VERSION.in'
@@ -81,6 +82,7 @@ on:
       - '.github/workflows/openbsd.yml'
       - '.github/workflows/windows.yml'
       - '.vscode/**'
+      - '.codespellrc'
       - '.gitignore'
       - '.pre-commit-config.yaml'
       - 'AC_VERSION.in'
@@ -109,7 +111,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         env:
           PVS_STUDIO_NAME: ${{ secrets.PvsStudioName }}
           PVS_STUDIO_KEY: ${{ secrets.PvsStudioKey }}
