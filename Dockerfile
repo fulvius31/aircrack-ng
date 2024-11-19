@@ -4,7 +4,8 @@ FROM ${IMAGE_BASE} AS builder
 
 # Install dependencies for building
 COPY docker_package_install.sh /
-RUN sh /docker_package_install.sh builder
+RUN chmod +x docker_package_install.sh && \
+	 /docker_package_install.sh builder
 
 # Build Aircrack-ng
 # hadolint ignore=DL3059
@@ -17,9 +18,9 @@ RUN set -x \
 		autoreconf -vif && \
 		set -e; \
 			./configure --with-experimental --with-ext-scripts --enable-maintainer-mode --prefix=/usr/local && \
-			make -j3 && \
+			make -j$(nproc) && \
 		set +e && \
-			if ! make check -j3; then \
+			if ! make check -j$(nproc); then \
 				echo "Processor: $(uname -m)"; \
 				for file in `grep -l "(exit status: [1-9]" test/*.log`; do \
 					echo "[*] Test ${file}:"; \
@@ -47,8 +48,8 @@ COPY --from=builder /output/usr /output
 RUN set -x && \
 	[ -d /usr/local/share/man ] || \
 		mkdir -p /usr/local/share/man
-RUN mv /output/local/share/man/* /usr/local/share/man/ && \
-	rmdir /output/local/share/man/ && \
+RUN cp -r /output/local/share/man/* /usr/local/share/man/ && \
+	rm -rf /output/local/share/man && \
 	cp -r /output/* /usr/ && \
 	rm -rf /output
 

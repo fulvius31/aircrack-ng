@@ -2,13 +2,86 @@
 
 echo "[*] Installing packages"
 STEP=$1
-if [ -z "$STEP" ]; then
+if [ -z "${STEP}" ]; then
     echo "[!] Must specify 'builder' or 'stage2' as arguments"
     exit 1
-elif [ "$STEP" = 'builder' ]; then
+elif [ "${STEP}" = 'builder' ]; then
     echo "[*] Builder step"
-elif [ "$STEP" = 'stage2' ]; then
+elif [ "${STEP}" = 'stage2' ]; then
     echo "[*] Stage2 step"
+fi
+
+install_hwloc() {
+    CUR_PWD=$(pwd)
+    cd /tmp || exit
+    wget https://download.open-mpi.org/release/hwloc/v2.10/hwloc-2.10.0.tar.bz2
+    tar -jxf hwloc-2.10.0.tar.bz2
+    rm hwloc-2.10.0.tar.bz2
+    cd hwloc-2.10.0 || exit
+    ./configure
+    make -j "$(nproc)"
+    make install
+    cd ..
+    rm -rf hwloc-2.10.0
+    cd "${CUR_PWD}" || exit
+}
+
+install_iw() {
+    CUR_PWD=$(pwd)
+    cd /tmp || exit
+    wget https://mirrors.edge.kernel.org/pub/software/network/iw/iw-6.9.tar.xz
+    tar -xf iw-6.9.tar.xz
+    rm iw-6.9.tar.xz
+    cd iw-6.9 || exit
+    make
+    chmod +x iw
+    mv iw /usr/local/sbin
+    cd ..
+    rm -rf iw-6.9
+    cd "${CUR_PWD}" || exit
+}
+
+install_hostapd() {
+    CUR_PWD=$(pwd)
+    cd /tmp || exit
+    wget https://w1.fi/releases/hostapd-2.10.tar.gz
+    tar -zxf hostapd-2.10.tar.gz
+    rm hostapd-2.10.tar.gz
+    cd hostapd-2.10/hostapd || exit 1
+    cp defconfig .config
+    make
+    make install
+    hostapd -v
+    cd ../..
+    rm -rf hostapd-2.10
+    cd "${CUR_PWD}" || exit
+}
+
+install_cmocka() {
+    CUR_PWD=$(pwd)
+    cd /tmp || exit
+    wget https://cmocka.org/files/1.0/cmocka-1.0.1.tar.xz
+    tar -xf cmocka-1.0.1.tar.xz
+    rm cmocka-1.0.1.tar.xz
+    cd cmocka-1.0.1 || exit
+    mkdir build
+    cd build || exit
+    cmake ..
+    make
+    make install
+    # Otherwise tests will fail because it cannot open the shared library
+    #export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64
+    ldconfig
+    cd ../..
+    rm -rf cmocka-1.0.1
+    cd "${CUR_PWD}" || exit
+}
+
+# Check if /etc/os-release exists and print error message
+# For example, NixOS container doesn't have one
+if [ ! -f /etc/os-release ]; then
+    echo "Unsupported distribution, /etc/os-release does not exist"
+    exit 1
 fi
 
 # Load OS info
@@ -49,23 +122,23 @@ elif [ "${ID}" = 'arch' ] || [ "${ID_LIKE}" = 'arch' ]; then
 	    pacman -Sy --noconfirm libgpg-error gnupg gpgme glibc
         pacman -Sy --noconfirm base-devel libnl openssl ethtool util-linux zlib libpcap sqlite pcre2 hwloc \
                                 cmocka hostapd wpa_supplicant tcpdump screen iw usbutils pciutils expect git \
-                                python python-setuptools
+                                python python-setuptools expat
     elif [ "${STEP}" = 'stage2' ]; then
         pacman -Sy --noconfirm libgpg-error gnupg gpgme glibc
         pacman -Sy --noconfirm libnl openssl ethtool util-linux zlib libpcap sqlite pcre2 hwloc iw usbutils \
                                 pciutils python-graphviz python
     fi
 elif [ "${ID}" = 'alpine' ]; then
-    echo "[*] Detected alpine"
+    echo "[*] Detected alpine (${VERSION_ID})"
     if [ "${STEP}" = 'builder' ]; then
         apk add --no-cache \
             gcc g++ make autoconf automake libtool libnl3-dev openssl-dev ethtool libpcap-dev cmocka-dev \
             hostapd wpa_supplicant tcpdump screen iw pkgconf util-linux sqlite-dev pcre2-dev linux-headers \
-            zlib-dev pciutils usbutils expect hwloc-dev git python3 expect gawk bear py3-pip
+            zlib-dev pciutils usbutils expect hwloc-dev git python3 gawk bear py3-pip
     elif [ "${STEP}" = 'stage2' ]; then
         apk add --no-cache \
             libnl3 openssl ethtool libpcap util-linux sqlite-dev pcre2 zlib pciutils usbutils hwloc wget \
-            iproute2 kmod python3 py3-graphviz urfkill iw 
+            iproute2 kmod python3 py3-graphviz urfkill iw
     fi
 elif [ "${ID}" = 'fedora' ] || [ "${ID}" = 'almalinux' ] || [ "${ID}" = 'rocky' ] || [ "${ID}" = 'ol' ]; then
     echo "[*] Distribution: ${NAME} (${VERSION_ID})"
@@ -86,24 +159,14 @@ elif [ "${ID}" = 'fedora' ] || [ "${ID}" = 'almalinux' ] || [ "${ID}" = 'rocky' 
         elif [ "${ID}" = 'ol' ]; then
             echo "[*] Install EPEL"
             ${DNF_BIN} install epel-release dnf-plugins-core -y
-            ${DNF_BIN} install xz cmake gcc -y
+            ${DNF_BIN} install xz cmake gcc wget -y
             LIBPCAP=libpcap
             # We're installing cmocka manually, not present in repos
             CMOCKA=""
             ${DNF_BIN} distro-sync -y --refresh
 
-            cd /tmp || exit
-            curl https://cmocka.org/files/1.0/cmocka-1.0.1.tar.xz -o cmocka-1.0.1.tar.xz
-            tar -xf cmocka-1.0.1.tar.xz
-            cd cmocka-1.0.1 || exit
-            mkdir build
-            cd build || exit
-            cmake ..
-            make
-            make install
-            # Otherwise tests will fail because it cannot open the shared library
             export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64
-            ldconfig
+            install_cmocka
             cd / || exit
         fi
 
@@ -161,29 +224,69 @@ EOF
 elif [ "${ID}" = 'clear-linux-os' ]; then
     echo "[*] Detected Clear Linux (${VERSION_ID})"
     if [ "${STEP}" = 'builder' ]; then
+        # Break swupd in multiple steps to avoid 'bundle too large by xxxM'
         # Build hostapd
-        swupd bundle-add wget c-basic devpkg-openssl devpkg-libnl
-        wget https://w1.fi/releases/hostapd-2.10.tar.gz
-        tar -zxf hostapd-2.10.tar.gz
-        cd hostapd-2.10/hostapd || exit 1
-        cp defconfig .config
-        make
-        make install
-        hostapd -v
+        swupd bundle-add --skip-diskspace-check wget
+        swupd bundle-add --skip-diskspace-check c-basic
+        swupd bundle-add --skip-diskspace-check devpkg-openssl
+        swupd bundle-add --skip-diskspace-check devpkg-libnl
+        install_hostapd
 
         # Install the rest of the packages
-        swupd bundle-add devpkg-libgcrypt devpkg-hwloc devpkg-libpcap
-        # Split it in multiple parts to avoid failure: "Error: Bundle too large by xxxxM"
-        swupd bundle-add devpkg-pcre2 devpkg-sqlite-autoconf git
-        swupd bundle-add ethtool network-basic software-testing
-        swupd bundle-add sysadmin-basic wpa_supplicant os-testsuite
+        swupd bundle-add --skip-diskspace-check devpkg-libgcrypt
+        swupd bundle-add --skip-diskspace-check devpkg-hwloc
+        swupd bundle-add --skip-diskspace-check devpkg-libpcap
+        swupd bundle-add --skip-diskspace-check devpkg-pcre2
+        swupd bundle-add --skip-diskspace-check devpkg-sqlite-autoconf
+        swupd bundle-add --skip-diskspace-check git
+        swupd bundle-add --skip-diskspace-check ethtool
+        swupd bundle-add --skip-diskspace-check network-basic
+        swupd bundle-add --skip-diskspace-check software-testing
+        swupd bundle-add --skip-diskspace-check sysadmin-basic
+        swupd bundle-add --skip-diskspace-check wpa_supplicant
+        swupd bundle-add --skip-diskspace-check os-testsuite
                          
     elif [ "${STEP}" = 'stage2' ]; then
-        # Break it in multiple steps to avoid the issue mentioned above
-        swupd bundle-add libnl openssl devpkg-zlib devpkg-libpcap
-        swupd bundle-add sqlite devpkg-pcre2 hwloc ethtool
-        swupd bundle-add network-basic
-        swupd bundle-add sysadmin-basic python-extras
+        # Break it in multiple steps to avoid 'bundle too large by xxxM'
+        swupd bundle-add --skip-diskspace-check libnl
+        swupd bundle-add --skip-diskspace-check openssl
+        swupd bundle-add --skip-diskspace-check devpkg-zlib
+        swupd bundle-add --skip-diskspace-check devpkg-libpcap
+        swupd bundle-add --skip-diskspace-check sqlite
+        swupd bundle-add --skip-diskspace-check devpkg-pcre2
+        swupd bundle-add --skip-diskspace-check hwloc
+        swupd bundle-add --skip-diskspace-check ethtool
+        swupd bundle-add --skip-diskspace-check network-basic
+        swupd bundle-add --skip-diskspace-check sysadmin-basic
+        swupd bundle-add --skip-diskspace-check python-extras
+    fi
+elif [ "${ID}" = 'slackware' ]; then
+    echo "[*] Detected Slackware Linux (${VERSION_ID})"
+    slackpkg update
+    if [ "${STEP}" = 'builder' ]; then
+        slackpkg install ca-certificates perl dcron gcc g++ make guile gc wget openssl libnl3 \
+                         binutils glibc flex kernel-headers pkg-config cmake libarchive lz4 libxml2
+        update-ca-certificates -f
+        # Otherwise tests will fail because it cannot open the shared library
+        export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64
+        install_hostapd
+        install_cmocka
+        install_hwloc
+
+        slackpkg install autoconf automake libtool ethtool libmnl libpcap tcpdump libcap-ng dbus pciutils usbutils expect tcl \
+            screen util-linux sqlite icu4c libedit pcre2 zlib git python3 gawk python-pip wpa_supplicant expat m4
+        pip install setuptools
+    elif [ "${STEP}" = 'stage2' ]; then
+        slackpkg install ca-certificates perl dcron
+        slackpkg install util-linux pciutils usbutils wget iproute2 kmod python3 util-linux python-pip expat ethtool \
+                         libmnl glibc libnl3 sqlite icu4c
+        slackpkg install make guile gc gcc wget kernel-headers pkg-config  glibc binutils
+        update-ca-certificates -f
+        pip install graphviz
+        install_iw
+        slackpkg remove perl dcron make guile gc gcc gcc-brig gcc-g++ gcc-gdc gcc-gfortran gcc-gnat gcc-go gcc-objc \
+                        kernel-headers pkg-config binutils
+        rm -f /var/lib/slackpkg/*
     fi
 else
     echo "[!] Unsupported distro: ${ID} - PR welcome"
